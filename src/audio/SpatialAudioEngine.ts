@@ -240,4 +240,17 @@ export class SpatialAudioEngine {
   getLoadedSounds(): string[] {
     return Array.from(this.buffers.keys())
   }
+
+  setMuted(id: string, muted: boolean) {
+    const sound = this.sounds.get(id)
+    if (!sound) return
+
+    const now = this.ctx.currentTime
+    if (muted) {
+      sound.gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1)
+    } else {
+      // Restore volume based on current position
+      sound.gain.gain.exponentialRampToValueAtTime(0.5, now + 0.1)
+    }
+  }
 }
