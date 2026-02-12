@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Bash(timeout:*)",
+      "Bash(npm run build)",
+      "Bash(npm run dev)",
+      "Bash(curl:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npx kill-port:*)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(xargs kill:*)",
+      "Bash(git init:*)",
+      "Bash(git add:*)"
+    ]
+  }
+}
