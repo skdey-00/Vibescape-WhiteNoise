@@ -1,5 +1,5 @@
 export type SoundNodeChain = {
-  source: AudioBufferSourceNode
+  source: AudioBufferSourceNode | MediaStreamAudioSourceNode
   gain: GainNode
   panner: PannerNode
   filter: BiquadFilterNode
@@ -18,6 +18,7 @@ export interface RoomConfig {
 export class SpatialAudioEngine {
   private ctx = new AudioContext()
   private masterGain = this.ctx.createGain()
+  private masterVolumeGain = this.ctx.createGain()
   private analyser = this.ctx.createAnalyser()
   private masterLowpass = this.ctx.createBiquadFilter()
   private sounds = new Map<string, SoundNodeChain>()
@@ -40,6 +41,8 @@ export class SpatialAudioEngine {
   }
 
   constructor() {
+    console.log(`[SpatialAudioEngine] Constructor called, audio context state: ${this.ctx.state}`)
+
     this.masterLowpass.type = "lowpass"
     this.masterLowpass.frequency.value = 18000
 
@@ -79,10 +82,26 @@ export class SpatialAudioEngine {
     this.reverbGain.connect(this.masterGain)
     this.delayGain.connect(this.masterGain)
 
-    // Main signal chain
-    this.masterGain.connect(this.masterLowpass)
+    // Main signal chain (added masterVolumeGain for volume control)
+    this.masterGain.connect(this.masterVolumeGain)
+    this.masterVolumeGain.connect(this.masterLowpass)
     this.masterLowpass.connect(this.analyser)
     this.analyser.connect(this.ctx.destination)
+
+    console.log(`[SpatialAudioEngine] Audio graph connected successfully`)
+  }
+
+  /**
+   * Ensure audio context is running (browsers suspend until user interaction)
+   */
+  async ensureAudioContextStarted() {
+    if (this.ctx.state === 'suspended') {
+      console.log(`[SpatialAudioEngine] Resuming suspended audio context...`)
+      await this.ctx.resume()
+      console.log(`[SpatialAudioEngine] Audio context resumed, state: ${this.ctx.state}`)
+    } else {
+      console.log(`[SpatialAudioEngine] Audio context already running: ${this.ctx.state}`)
+    }
   }
 
   private createImpulseResponse() {
@@ -134,7 +153,7 @@ export class SpatialAudioEngine {
 
     filter.type = "lowpass"
     filter.frequency.value = 12000
-    sendGain.gain.value = 1.0 // Increased from 0.3 for stronger effect send
+    sendGain.gain.value = 1.0
 
     // Connect dry signal
     source.connect(gain).connect(panner).connect(filter).connect(this.masterGain)
@@ -149,14 +168,64 @@ export class SpatialAudioEngine {
     this.sounds.set(id, { source, gain, panner, filter, sendGain })
   }
 
+  /**
+   * Play a live audio stream from system audio capture
+   */
+  playStreamSound(id: string, stream: MediaStream, initialX: number = 0, initialY: number = 0) {
+    // Check if already playing
+    if (this.sounds.has(id)) {
+      console.warn(`[SpatialAudioEngine] Sound ${id} is already playing`)
+      return
+    }
+
+    console.log(`[SpatialAudioEngine] Creating stream sound ${id} with ${stream.getAudioTracks().length} audio tracks`)
+
+    const source = this.ctx.createMediaStreamSource(stream)
+
+    const gain = this.ctx.createGain()
+    const panner = this.ctx.createPanner()
+    const filter = this.ctx.createBiquadFilter()
+    const sendGain = this.ctx.createGain()
+
+    panner.panningModel = "HRTF"
+    panner.distanceModel = "exponential"
+    panner.refDistance = 1
+    panner.maxDistance = 20
+    panner.rolloffFactor = 1
+
+    filter.type = "lowpass"
+    filter.frequency.value = 12000
+    sendGain.gain.value = 1.0
+
+    // Connect dry signal
+    source.connect(gain).connect(panner).connect(filter).connect(this.masterGain)
+
+    // Connect to effects sends
+    filter.connect(sendGain)
+    sendGain.connect(this.reverbConvolver)
+    sendGain.connect(this.delayInput)
+
+    this.sounds.set(id, { source, gain, panner, filter, sendGain })
+
+    console.log(`[SpatialAudioEngine] Stream sound ${id} created and connected`)
+
+    // Set initial position
+    this.updatePosition(id, initialX, initialY)
+  }
+
   stopSound(id: string) {
     const sound = this.sounds.get(id)
     if (!sound) return
 
     const now = this.ctx.currentTime
     sound.gain.gain.exponentialRampToValueAtTime(0.001, now + 0.5)
+
     setTimeout(() => {
-      sound.source.stop()
+      // Only call stop() on AudioBufferSourceNode
+      // MediaStreamAudioSourceNode doesn't have a stop() method
+      if ('stop' in sound.source) {
+        sound.source.stop()
+      }
       this.sounds.delete(id)
     }, 500)
   }
@@ -173,9 +242,9 @@ export class SpatialAudioEngine {
     if (!sound) return
     const now = this.ctx.currentTime
 
-    // Update 3D position
-    sound.panner.positionX.exponentialRampToValueAtTime(x, now + 0.05)
-    sound.panner.positionZ.exponentialRampToValueAtTime(y, now + 0.05)
+    // Update 3D position - use setValueAtTime for immediate response when dragging
+    sound.panner.positionX.setValueAtTime(x, now)
+    sound.panner.positionZ.setValueAtTime(y, now)
 
     // Calculate distance from center (listener position)
     const distance = Math.sqrt(x * x + y * y)
@@ -199,16 +268,10 @@ export class SpatialAudioEngine {
     // Increase reverb when closer to walls (sound reflects off walls)
     const wallReverbBoost = Math.max(0, 1 - minWallDistance / 5) * this.roomConfig.wallReflection * 2
 
-    // Apply all physics calculations
-    // Set a minimum value first to ensure exponential ramp works properly
-    // (exponentialRampToValueAtTime can fail if current value is too close to 0)
-    const currentGain = sound.gain.gain.value
-    if (currentGain < 0.01) {
-      sound.gain.gain.setValueAtTime(0.01, now)
-    }
-    sound.gain.gain.exponentialRampToValueAtTime(volume, now + 0.05)
-    sound.filter.frequency.exponentialRampToValueAtTime(cutoffFreq, now + 0.05)
-    sound.sendGain.gain.exponentialRampToValueAtTime(0.8 + wallReverbBoost, now + 0.1)
+    // Apply all physics calculations IMMEDIATELY (no ramps for instant response)
+    sound.gain.gain.setValueAtTime(volume, now)
+    sound.filter.frequency.setValueAtTime(cutoffFreq, now)
+    sound.sendGain.gain.setValueAtTime(0.8 + wallReverbBoost, now)
   }
 
   toggleLofi(on: boolean) {
@@ -296,5 +359,10 @@ export class SpatialAudioEngine {
     // First set a minimum value, then ramp to target volume
     sound.gain.gain.setValueAtTime(0.01, now)
     sound.gain.gain.linearRampToValueAtTime(volume, now + 0.1)
+  }
+
+  setMasterVolume(volume: number) {
+    const now = this.ctx.currentTime
+    this.masterVolumeGain.gain.setValueAtTime(volume, now)
   }
 }
