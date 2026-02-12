@@ -190,6 +190,12 @@ export class SpatialAudioEngine {
     const wallReverbBoost = Math.max(0, 1 - minWallDistance / 5) * this.roomConfig.wallReflection
 
     // Apply all physics calculations
+    // Set a minimum value first to ensure exponential ramp works properly
+    // (exponentialRampToValueAtTime can fail if current value is too close to 0)
+    const currentGain = sound.gain.gain.value
+    if (currentGain < 0.01) {
+      sound.gain.gain.setValueAtTime(0.01, now)
+    }
     sound.gain.gain.exponentialRampToValueAtTime(volume, now + 0.05)
     sound.filter.frequency.exponentialRampToValueAtTime(cutoffFreq, now + 0.05)
     sound.sendGain.gain.exponentialRampToValueAtTime(0.3 + wallReverbBoost, now + 0.1)
@@ -249,8 +255,26 @@ export class SpatialAudioEngine {
     if (muted) {
       sound.gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1)
     } else {
-      // Restore volume based on current position
+      // When unmuting, set a base value first then ramp to restore volume
+      sound.gain.gain.setValueAtTime(0.001, now)
       sound.gain.gain.exponentialRampToValueAtTime(0.5, now + 0.1)
     }
+  }
+
+  unmute(id: string, x: number, y: number) {
+    const sound = this.sounds.get(id)
+    if (!sound) return
+
+    const now = this.ctx.currentTime
+
+    // Calculate distance from center (listener position)
+    const distance = Math.sqrt(x * x + y * y)
+
+    // Physics: Inverse square law for volume attenuation
+    const volume = Math.max(0.1, 1 / (1 + distance * 0.3))
+
+    // First set a minimum value, then ramp to target volume
+    sound.gain.gain.setValueAtTime(0.01, now)
+    sound.gain.gain.linearRampToValueAtTime(volume, now + 0.1)
   }
 }

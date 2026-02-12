@@ -18,9 +18,9 @@ export function PresetPanel({ engine, isOpen, onClose, onSelectPreset }: PresetP
     engine.setDelayFeedback(preset.effects.delayFeedback)
     engine.toggleLofi(preset.lofi)
 
-    // Apply sound positions
+    // Apply sound positions - use unmute to ensure sounds play properly
     preset.sounds.forEach((sound) => {
-      engine.updatePosition(sound.id, sound.position[0], sound.position[1])
+      engine.unmute(sound.id, sound.position[0], sound.position[1])
     })
 
     onSelectPreset(preset)

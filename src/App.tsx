@@ -73,6 +73,9 @@ export default function App() {
   }, [draggingId, engine])
 
   const handleSelectPreset = (preset: Preset) => {
+    // Clear all muted sounds when applying a preset
+    setMutedSounds(new Set())
+
     // Update sound positions from preset
     setSounds(prev => prev.map(sound => {
       const presetSound = preset.sounds.find(s => s.id === sound.id)
@@ -101,14 +104,15 @@ export default function App() {
     const newMutedSounds = new Set(mutedSounds)
 
     if (isMuted) {
+      // Unmute: remove from muted set and restore volume
       newMutedSounds.delete(id)
-      engine.setMuted(id, false)
-      // Restore position to update volume based on current position
       const sound = sounds.find(s => s.id === id)
       if (sound) {
-        engine.updatePosition(id, sound.x / 50, sound.y / 50)
+        // Use dedicated unmute method
+        engine.unmute(id, sound.x / 50, sound.y / 50)
       }
     } else {
+      // Mute: add to muted set and silence
       newMutedSounds.add(id)
       engine.setMuted(id, true)
     }
