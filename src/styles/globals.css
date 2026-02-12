@@ -1,0 +1,15 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --pulse-scale: 1;
+}
+
+body {
+  margin: 0;
+  background: linear-gradient(135deg, #1e1e2f, #2b2b40);
+  color: white;
+  font-family: sans-serif;
+  overflow: hidden;
+}
