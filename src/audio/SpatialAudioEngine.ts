@@ -29,6 +29,7 @@ export class SpatialAudioEngine {
   private delayGain: GainNode
   private delayNode: DelayNode
   private delayFeedback: GainNode
+  private delayInput: GainNode
 
   // Room acoustics
   private roomConfig: RoomConfig = {
@@ -49,24 +50,32 @@ export class SpatialAudioEngine {
     this.reverbGain = this.ctx.createGain()
     this.reverbGain.gain.value = 0
 
-    // Setup delay
+    // Setup delay with proper feedback routing
     this.delayNode = this.ctx.createDelay(1.0)
-    this.delayNode.delayTime.value = 0.3
+    this.delayNode.delayTime.value = 0.4 // Slightly longer default delay
     this.delayFeedback = this.ctx.createGain()
-    this.delayFeedback.gain.value = 0.4
+    this.delayFeedback.gain.value = 0.5 // Higher feedback for more repeats
     this.delayGain = this.ctx.createGain()
     this.delayGain.gain.value = 0
 
     // Create impulse response for reverb
     this.createImpulseResponse()
 
-    // Connect delay feedback loop
+    // Create a separate node for delay input to avoid feedback loop issues
+    const delayInput = this.ctx.createGain()
+    delayInput.gain.value = 1
+
+    // Connect delay: input -> delayNode -> (output + feedback -> back to input)
+    delayInput.connect(this.delayNode)
+    this.delayNode.connect(this.delayGain)
     this.delayNode.connect(this.delayFeedback)
-    this.delayFeedback.connect(this.delayNode)
+    this.delayFeedback.connect(delayInput)
+
+    // Store delayInput for connecting sounds
+    this.delayInput = delayInput
 
     // Connect effects to master
     this.reverbConvolver.connect(this.reverbGain)
-    this.delayNode.connect(this.delayGain)
     this.reverbGain.connect(this.masterGain)
     this.delayGain.connect(this.masterGain)
 
@@ -78,14 +87,15 @@ export class SpatialAudioEngine {
 
   private createImpulseResponse() {
     const sampleRate = this.ctx.sampleRate
-    const length = sampleRate * 2 // 2 seconds
+    const length = sampleRate * 3 // 3 seconds for longer reverb
     const impulse = this.ctx.createBuffer(2, length, sampleRate)
 
     for (let channel = 0; channel < 2; channel++) {
       const channelData = impulse.getChannelData(channel)
       for (let i = 0; i < length; i++) {
-        // Exponential decay with random noise for natural reverb
-        channelData[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, 2)
+        // Stronger exponential decay with more initial energy
+        const decay = Math.pow(1 - i / length, 1.5)
+        channelData[i] = (Math.random() * 2 - 1) * decay * 2.5 // Increased amplitude
       }
     }
 
@@ -124,7 +134,7 @@ export class SpatialAudioEngine {
 
     filter.type = "lowpass"
     filter.frequency.value = 12000
-    sendGain.gain.value = 0.3
+    sendGain.gain.value = 1.0 // Increased from 0.3 for stronger effect send
 
     // Connect dry signal
     source.connect(gain).connect(panner).connect(filter).connect(this.masterGain)
@@ -132,7 +142,7 @@ export class SpatialAudioEngine {
     // Connect to effects sends
     filter.connect(sendGain)
     sendGain.connect(this.reverbConvolver)
-    sendGain.connect(this.delayNode)
+    sendGain.connect(this.delayInput)
 
     source.start()
 
@@ -187,7 +197,7 @@ export class SpatialAudioEngine {
     const minWallDistance = Math.min(distToLeft, distToRight, distToFront, distToBack)
 
     // Increase reverb when closer to walls (sound reflects off walls)
-    const wallReverbBoost = Math.max(0, 1 - minWallDistance / 5) * this.roomConfig.wallReflection
+    const wallReverbBoost = Math.max(0, 1 - minWallDistance / 5) * this.roomConfig.wallReflection * 2
 
     // Apply all physics calculations
     // Set a minimum value first to ensure exponential ramp works properly
@@ -198,7 +208,7 @@ export class SpatialAudioEngine {
     }
     sound.gain.gain.exponentialRampToValueAtTime(volume, now + 0.05)
     sound.filter.frequency.exponentialRampToValueAtTime(cutoffFreq, now + 0.05)
-    sound.sendGain.gain.exponentialRampToValueAtTime(0.3 + wallReverbBoost, now + 0.1)
+    sound.sendGain.gain.exponentialRampToValueAtTime(0.8 + wallReverbBoost, now + 0.1)
   }
 
   toggleLofi(on: boolean) {
@@ -209,18 +219,28 @@ export class SpatialAudioEngine {
     const now = this.ctx.currentTime
 
     if (effect === 'reverb') {
-      this.reverbGain.gain.exponentialRampToValueAtTime(Math.max(0.001, value), now + 0.1)
+      // Multiply by 2 for more pronounced reverb effect
+      const scaledValue = value * 2
+      this.reverbGain.gain.setValueAtTime(this.reverbGain.gain.value, now)
+      this.reverbGain.gain.linearRampToValueAtTime(scaledValue, now + 0.1)
     } else if (effect === 'delay') {
-      this.delayGain.gain.exponentialRampToValueAtTime(Math.max(0.001, value), now + 0.1)
+      // Multiply by 1.5 for more pronounced delay effect
+      const scaledValue = value * 1.5
+      this.delayGain.gain.setValueAtTime(this.delayGain.gain.value, now)
+      this.delayGain.gain.linearRampToValueAtTime(scaledValue, now + 0.1)
     }
   }
 
   setDelayTime(time: number) {
-    this.delayNode.delayTime.exponentialRampToValueAtTime(time, this.ctx.currentTime + 0.1)
+    const now = this.ctx.currentTime
+    this.delayNode.delayTime.setValueAtTime(this.delayNode.delayTime.value, now)
+    this.delayNode.delayTime.linearRampToValueAtTime(time, now + 0.05)
   }
 
   setDelayFeedback(feedback: number) {
-    this.delayFeedback.gain.exponentialRampToValueAtTime(feedback, this.ctx.currentTime + 0.1)
+    const now = this.ctx.currentTime
+    this.delayFeedback.gain.setValueAtTime(this.delayFeedback.gain.value, now)
+    this.delayFeedback.gain.linearRampToValueAtTime(feedback, now + 0.05)
   }
 
   getEffectAmount(effect: EffectType): number {

@@ -2,12 +2,22 @@ import { useEffect, useMemo, useState } from "react"
 import { SpatialAudioEngine } from "./audio/SpatialAudioEngine"
 import { PresetPanel } from "./components/PresetPanel"
 import { EffectsPanel } from "./components/EffectsPanel"
+import { AddSoundModal } from "./components/AddSoundModal"
 import { Preset } from "./lib/presets"
 
-const SOUND_CONFIG = [
-  { id: "rain", emoji: "🌧️", x: 0, y: -100 },
-  { id: "cafe", emoji: "☕", x: 0, y: 100 },
-  { id: "vinyl", emoji: "📀", x: 100, y: 0 },
+interface Sound {
+  id: string
+  emoji: string
+  x: number
+  y: number
+  name?: string
+  isCustom?: boolean
+}
+
+const SOUND_CONFIG: Sound[] = [
+  { id: "rain", emoji: "🌧️", x: 0, y: -100, name: "Rain" },
+  { id: "cafe", emoji: "☕", x: 0, y: 100, name: "Cafe" },
+  { id: "vinyl", emoji: "📀", x: 100, y: 0, name: "Vinyl" },
 ]
 
 export default function App() {
@@ -18,8 +28,10 @@ export default function App() {
   const [showPresets, setShowPresets] = useState(false)
   const [showEffects, setShowEffects] = useState(false)
   const [showInfo, setShowInfo] = useState(false)
+  const [showAddSound, setShowAddSound] = useState(false)
   const [isLofi, setIsLofi] = useState(false)
   const [mutedSounds, setMutedSounds] = useState<Set<string>>(new Set())
+  const [customSoundUrls, setCustomSoundUrls] = useState<Map<string, string>>(new Map())
 
   useEffect(() => {
     if (!started) return
@@ -120,6 +132,60 @@ export default function App() {
     setMutedSounds(newMutedSounds)
   }
 
+  const handleAddSound = (soundData: { id: string; name: string; emoji: string; file: File }) => {
+    // Create object URL for the audio file
+    const audioUrl = URL.createObjectURL(soundData.file)
+
+    // Store the URL for cleanup later
+    setCustomSoundUrls(prev => new Map(prev).set(soundData.id, audioUrl))
+
+    // Add sound to state with random position
+    const angle = Math.random() * Math.PI * 2
+    const distance = 100 + Math.random() * 100
+    const newSound: Sound = {
+      id: soundData.id,
+      emoji: soundData.emoji,
+      name: soundData.name,
+      x: Math.cos(angle) * distance,
+      y: Math.sin(angle) * distance,
+      isCustom: true
+    }
+
+    setSounds(prev => [...prev, newSound])
+
+    // Load and play the sound
+    engine.loadSound(soundData.id, audioUrl).then(() => {
+      engine.playSound(soundData.id)
+      engine.updatePosition(soundData.id, newSound.x / 50, newSound.y / 50)
+    })
+  }
+
+  const handleRemoveSound = (id: string) => {
+    // Stop and remove from engine
+    engine.stopSound(id)
+
+    // Remove from sounds state
+    setSounds(prev => prev.filter(s => s.id !== id))
+
+    // Remove from muted set
+    setMutedSounds(prev => {
+      const newSet = new Set(prev)
+      newSet.delete(id)
+      return newSet
+    })
+
+    // Revoke object URL if it's a custom sound
+    const url = customSoundUrls.get(id)
+    if (url) {
+      URL.revokeObjectURL(url)
+      setCustomSoundUrls(prev => {
+        const newMap = new Map(prev)
+        newMap.delete(id)
+        return newMap
+      })
+    }
+  }
+
   if (!started) {
     return (
       <div style={{ width: "100vw", height: "100vh", background: "linear-gradient(135deg, #1e1e2f, #2b2b40)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "white" }}>
@@ -181,6 +247,20 @@ export default function App() {
         >
           🎵 Lofi
         </button>
+        <button
+          onClick={() => setShowAddSound(true)}
+          style={{
+            padding: "12px 20px",
+            borderRadius: "12px",
+            background: "rgba(34, 197, 94, 0.3)",
+            border: "1px solid rgba(34, 197, 94, 0.5)",
+            color: "#86efac",
+            fontSize: "14px",
+            cursor: "pointer"
+          }}
+        >
+          + Add Sound
+        </button>
       </div>
 
       {/* Preset Panel */}
@@ -193,6 +273,13 @@ export default function App() {
 
       {/* Effects Panel */}
       {showEffects && <EffectsPanel engine={engine} />}
+
+      {/* Add Sound Modal */}
+      <AddSoundModal
+        isOpen={showAddSound}
+        onClose={() => setShowAddSound(false)}
+        onAddSound={handleAddSound}
+      />
 
       {/* Info Button - Top Right */}
       <button
@@ -317,8 +404,10 @@ export default function App() {
           return (
             <div
               key={sound.id}
+              title={sound.name || sound.id}
               onMouseDown={() => !isMuted && setDraggingId(sound.id)}
               onDoubleClick={() => handleToggleMute(sound.id)}
+              className="sound-icon-wrapper"
               style={{
                 position: "absolute",
                 width: "56px",
@@ -326,15 +415,19 @@ export default function App() {
                 borderRadius: "50%",
                 background: isMuted
                   ? "rgba(239, 68, 68, 0.3)"
-                  : draggingId === sound.id
-                    ? "rgba(255,255,255,0.3)"
-                    : "rgba(255,255,255,0.2)",
+                  : sound.isCustom
+                    ? "rgba(34, 197, 94, 0.2)"
+                    : draggingId === sound.id
+                      ? "rgba(255,255,255,0.3)"
+                      : "rgba(255,255,255,0.2)",
                 backdropFilter: "blur(12px)",
                 border: isMuted
                   ? "2px solid rgba(239, 68, 68, 0.5)"
-                  : draggingId === sound.id
-                    ? "2px solid rgba(255,255,255,0.4)"
-                    : "1px solid rgba(255,255,255,0.2)",
+                  : sound.isCustom
+                    ? "2px solid rgba(34, 197, 94, 0.4)"
+                    : draggingId === sound.id
+                      ? "2px solid rgba(255,255,255,0.4)"
+                      : "1px solid rgba(255,255,255,0.2)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -362,6 +455,42 @@ export default function App() {
               ) : (
                 sound.emoji
               )}
+              {/* Delete button for custom sounds - visible on hover */}
+              {sound.isCustom && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleRemoveSound(sound.id)
+                  }}
+                  className="delete-btn"
+                  style={{
+                    position: "absolute",
+                    top: "-6px",
+                    right: "-6px",
+                    width: "20px",
+                    height: "20px",
+                    borderRadius: "50%",
+                    background: "rgba(239, 68, 68, 0.9)",
+                    border: "none",
+                    color: "white",
+                    fontSize: "12px",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    opacity: 0,
+                    transition: "opacity 0.2s",
+                    pointerEvents: "auto"
+                  }}
+                >
+                  ×
+                </button>
+              )}
+              <style>{`
+                .sound-icon-wrapper:hover .delete-btn {
+                  opacity: 1 !important;
+                }
+              `}</style>
             </div>
           )
         })}
