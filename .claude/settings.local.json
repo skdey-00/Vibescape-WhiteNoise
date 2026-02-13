@@ -22,7 +22,9 @@
       "Bash(git stash:*)",
       "Bash(FILTER_BRANCH_SQUELCH_WARNING=1 git filter-branch --env-filter 'export GIT_AUTHOR_EMAIL=\"\"sanmeetdey@gmail.com\"\"; export GIT_COMMITTER_EMAIL=\"\"sanmeetdey@gmail.com\"\"' -- --all)",
       "Bash(echo:*)",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(gh pr create:*)",
+      "Bash(git merge:*)"
     ]
   }
 }

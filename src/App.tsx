@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react"
 import { SpatialAudioEngine } from "./audio/SpatialAudioEngine"
 import { EffectsPanel } from "./components/EffectsPanel"
 import { SystemAudioCapture, AudioSource } from "./audio/SystemAudioCapture"
+import { VirtualAudioGuide } from "./components/VirtualAudioGuide"
 
 interface Sound {
   id: string
@@ -22,6 +23,7 @@ export default function App() {
   const [draggingId, setDraggingId] = useState<string | null>(null)
   const [showEffects, setShowEffects] = useState(false)
   const [showInfo, setShowInfo] = useState(false)
+  const [showVirtualGuide, setShowVirtualGuide] = useState(false)
   const [isLofi, setIsLofi] = useState(false)
   const [mutedSounds, setMutedSounds] = useState<Set<string>>(new Set())
   const [sourceNameCounter, setSourceNameCounter] = useState(1)
@@ -102,10 +104,8 @@ export default function App() {
         // Play the stream
         engine.playStreamSound(source.id, source.stream, x / 50, y / 50)
 
-        // Show important reminder
-        setTimeout(() => {
-          alert("⚠️ IMPORTANT: To avoid echo/duplicate audio, please mute the original audio source (e.g., mute the YouTube video, Spotify tab, etc.). You should now hear the audio ONLY through Lofi Flow's spatial positioning.")
-        }, 500)
+        // Show non-intrusive notification instead of alert
+        console.log("✅ Audio captured! Drag the sound icon to position it in 3D space.")
       }
     } catch (error) {
       console.error("Failed to capture audio:", error)
@@ -171,15 +171,19 @@ export default function App() {
     return (
       <div style={{ width: "100vw", height: "100vh", background: "linear-gradient(135deg, #1e1e2f, #2b2b40)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "white" }}>
         <h1 style={{ fontSize: "48px", fontWeight: "bold", marginBottom: "16px" }}>🔊 Spatial Audio Mixer</h1>
-        <p style={{ fontSize: "18px", color: "rgba(255,255,255,0.6)", marginBottom: "32px" }}>Capture and spatialize your laptop's audio</p>
+        <p style={{ fontSize: "18px", color: "rgba(255,255,255,0.6)", marginBottom: "8px" }}>Capture and spatialize any application's audio</p>
+        <p style={{ fontSize: "14px", color: "rgba(34, 197, 94, 0.8)", marginBottom: "32px", fontWeight: "500" }}>
+          🎧 Control Spotify, YouTube, Discord, games, and more independently
+        </p>
         <button
           onClick={() => setStarted(true)}
           style={{ padding: "16px 32px", borderRadius: "16px", background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.2)", color: "white", fontSize: "16px", cursor: "pointer" }}
         >
           Click to Start
         </button>
-        <p style={{ fontSize: "14px", color: "rgba(255,255,255,0.4)", marginTop: "24px", textAlign: "center", maxWidth: "400px" }}>
-          You'll be able to capture system audio and position each source in 3D space
+        <p style={{ fontSize: "14px", color: "rgba(255,255,255,0.4)", marginTop: "24px", textAlign: "center", maxWidth: "450px" }}>
+          Click "🎧 Setup: Any App's Audio" to capture system-wide audio.<br/>
+          You'll be able to position each app in 3D space with full control
         </p>
       </div>
     )
@@ -189,6 +193,20 @@ export default function App() {
     <div style={{ width: "100vw", height: "100vh", background: "linear-gradient(135deg, #1e1e2f, #2b2b40)", position: "relative", overflow: "hidden" }}>
       {/* Top Bar */}
       <div style={{ position: "absolute", top: "16px", left: "50%", transform: "translateX(-50%)", display: "flex", gap: "16px", alignItems: "center", zIndex: 100 }}>
+        <button
+          onClick={() => setShowVirtualGuide(true)}
+          style={{
+            padding: "12px 20px",
+            borderRadius: "12px",
+            background: "rgba(59, 130, 246, 0.3)",
+            border: "1px solid rgba(59, 130, 246, 0.5)",
+            color: "#93c5fd",
+            fontSize: "14px",
+            cursor: "pointer"
+          }}
+        >
+          🎧 Setup: Any App's Audio
+        </button>
         <button
           onClick={handleCaptureAudio}
           style={{
@@ -319,10 +337,10 @@ export default function App() {
               <span style={{ fontSize: "18px" }}>+ Capture Audio</span>
             </div>
             <p style={{ fontSize: "13px", color: "rgba(255,255,255,0.7)", margin: 0, lineHeight: "1.5", marginBottom: "8px" }}>
-              Click to capture your laptop's system audio. When prompted, select a tab, window, or your entire screen, and <strong>make sure to check "Share system audio"</strong>.
+              Click to capture system audio. When prompted, select a tab, window, or your entire screen, and <strong>make sure to check "Share system audio"</strong>.
             </p>
             <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.5)", margin: 0, lineHeight: "1.4" }}>
-              <strong>💡 Browser Limitation:</strong> The original source must play audio for this to capture it. Use the master volume slider (🔊) to balance Lofi Flow's output against the original audio. For perfect isolation, see <code>VIRTUAL_AUDIO_SETUP.md</code>.
+              <strong>💡 To control ANY app independently:</strong> Click the <span style={{ color: "#93c5fd" }}>🎧 Setup: Any App's Audio</span> button at the top to install a virtual audio cable. This lets you mute Spotify while keeping Discord playing, position each app in 3D space, and control them all independently!
             </p>
           </div>
 
@@ -469,6 +487,16 @@ export default function App() {
       <div style={{ position: "absolute", bottom: "16px", left: "50%", transform: "translateX(-50%)", padding: "8px 16px", borderRadius: "20px", background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.2)", color: "rgba(255,255,255,0.7)", fontSize: "12px" }}>
         {sounds.length === 0 ? "Click + Capture Audio to start" : "Drag to move sounds • Use 🔊 volume slider to balance audio"}
       </div>
+
+      {/* Virtual Audio Setup Guide */}
+      {showVirtualGuide && (
+        <VirtualAudioGuide
+          onClose={() => setShowVirtualGuide(false)}
+          onComplete={() => {
+            setShowVirtualGuide(false)
+          }}
+        />
+      )}
     </div>
   )
 }
