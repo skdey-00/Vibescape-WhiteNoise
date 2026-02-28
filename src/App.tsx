@@ -37,6 +37,7 @@ export default function App() {
   const [hasDragged, setHasDragged] = useState(false)
   const [mouseDownTime, setMouseDownTime] = useState(0)
   const [mouseDownPos, setMouseDownPos] = useState({ x: 0, y: 0 })
+  const [presetKey, setPresetKey] = useState(0)
 
   const handleMute = (id: string) => {
     const sound = sounds.find(s => s.id === id)
@@ -388,6 +389,8 @@ export default function App() {
         onClose={() => setShowPresets(false)}
         onSelectPreset={(preset) => {
           // Update sound positions in UI when preset is selected
+          setPresetKey(prev => prev + 1) // Force re-render by updating key
+
           setSounds(prevSounds => {
             const newSounds = prevSounds.map(sound => {
               const presetSound = preset.sounds.find(s => s.id === sound.id)
@@ -395,6 +398,7 @@ export default function App() {
                 // Convert from audio engine coordinates to pixel coordinates
                 const pixelX = presetSound.position[0] * 50
                 const pixelY = presetSound.position[1] * 50
+
                 // Create a completely new object to ensure React detects the change
                 return {
                   ...sound,
@@ -407,7 +411,7 @@ export default function App() {
               // Keep custom sounds in their current position
               return { ...sound }
             })
-            return [...newSounds] // Force new array reference
+            return [...newSounds]
           })
         }}
       />
@@ -448,7 +452,7 @@ export default function App() {
         {/* Sound Icons */}
         {sounds.map((sound) => (
           <motion.div
-            key={sound.id}
+            key={`${sound.id}-${presetKey}`}
             onMouseDown={(e) => handleIconMouseDown(e, sound.id)}
             onMouseUp={() => handleIconMouseUp(sound.id)}
             onDoubleClick={() => handleMute(sound.id)}
